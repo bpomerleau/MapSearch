@@ -11,6 +11,8 @@ import sys
 
 # create graph g with UndirectedAdjacencyGraph class
 
+
+
 # open the Edmonton Grph .txt file
 Edmonton_Graph = open("edmonton-roads-2.0.1.txt")  # read entire .csv file
 # read each line to determine whether to add vertices or add edges
@@ -20,12 +22,12 @@ for i in Edmonton_Graph:
     # split by commas
     i = i.strip().split(",")
     if i[0] == 'V':  # when the line is describing a vertex
-        g.add_vertex(int(i[1]))  # add the vertex to the graph
+        g.add_vertex(int(i[1]))
         # Store the latitudes and longitudes into a tuple
         vertex_coord[int(i[1])] = (int(float(i[2]) * 100000),
                                    int(float(i[3]) * 100000))
     elif i[0] == 'E':  # when the line is describing an edge
-        g.add_edge((int(i[1]), int(i[2])))  # add the edge to the graph
+        g.add_edge((int(i[1]), int(i[2])))
         # Store the street name into the dictionary
         edge_street_name[i[1] + ", " + i[2]] = i[3]
 
@@ -35,32 +37,15 @@ def wait_response():
     command = ""
     while True:
         if sys.stdin:
-            i = sys.stdin.readline()
-            i = i.strip().split(",")
-            command = i[0]
-            if command == 'R':
-                # read vertex coordinates and return coordinates
-                return [(int(i[1]), int(i[2])), (int(i[3]), int(i[4]))]
-            elif command == 'A':
-                # return True and continue
-                return True
-
-
-def closest_vertex(lat1, lat2):
-    ''' Finds the nearest vertex to these coordinates
-    returns: vertex value'''
-    min_cost = 1000000000000000  # Some arbitrary large number
-    close_vertex = 0
-    for i in vertex_coord:
-        vertex_tuple = vertex_coord[i]
-        first_squared = (lat1 - vertex_tuple[0]) * (lat1 - vertex_tuple[0])
-        second_squared = (lat2 - vertex_tuple[1]) * (lat2 - vertex_tuple[1])
-        test_cost = math.sqrt(first_squared + second_squared)
-        if test_cost <= min_cost:
-            min_cost = test_cost
-            close_vertex = i
-    return close_vertex
-
+            for i in sys.stdin:
+                i = i.split().strip(",")
+                command = i[0]
+                if commmand == 'R':
+                    #read coordinates and return coordinates
+                elif command == 'A':
+                    #return nothing and continue
+                elif command == 'E':
+                    #end the program
 
 def least_cost_path(graph, start, dest, cost):
     """Find and return a least cost path in graph from start vertex to dest vertex.
@@ -72,7 +57,7 @@ def least_cost_path(graph, start, dest, cost):
       start: The vertex where the path starts. It is assumed
         that start is a vertex of graph.
       dest:  The vertex where the path ends. It is assumed
-        that dest is a vertex of graph.
+        that start is a vertex of graph.
       cost:  A function, taking the two vertices of an edge as
         parameters and returning the cost of the edge. For its
         interface, see the definition of cost_distance.
@@ -83,7 +68,50 @@ def least_cost_path(graph, start, dest, cost):
         Any two consecutive vertices correspond to some
         edge in graph.
         """
-    return 0
+    reached = dict()  # (empty dictionary)
+
+    runners = Minheap()
+    # a runner is an event from one vertex to another.
+    # runners is an instance of the Minheap() class developed in class. Data in
+    # the runners class is stored as follows:
+    #     (time, (time + cost(origin, goal), origin, goal)
+    # origin is the vertex at which the runner started.
+    # goal is the next vertex to be visited.
+    # time is the amount of 'time' taken since start. amount of time is
+    # determined by the cost function
+
+    runners.add(0, (0, start, start)) # start the first runner at vertex 'start'
+
+    while not runners.isempty():
+        #evaluate the runner with the shortest
+        (t, (time, origin, goal)) = runners.pop_min()
+
+        if goal in reached:
+            # if goal is in reached another runner has already made it there in
+            # less time. Ignore this runner and continue to the next
+            continue
+
+        reached[goal] = (origin, time) # runner got to dict key from dict value
+        if goal == dest:
+            path = []
+            while goal != start:
+                path.append(goal)
+                goal = reached[goal]
+            path.append(start)
+            path.reverse()
+            return path
+        for v_next in graph.neighbours(goal):
+            if v_next in reached:
+                #some other runner has made it to vertex faster, do not send
+                #runner
+                continue
+            runners.add(time, (time + cost(goal, v_next), goal, v_next))
+                    #    for each succ in goal
+    #       add runner (time + cost(goal, succ), succ, goal) to runners
+    #          (this new runner will reach succ at the given time)
+    # return reached
+
+    return []
 
 
 def cost_distance(u, v):
@@ -101,34 +129,8 @@ def cost_distance(u, v):
         (coord2_tuple[0] - coord1_tuple[0])
     second_squared = (coord2_tuple[1] - coord1_tuple[1]) * \
         (coord2_tuple[1] - coord1_tuple[1])
-
     return math.sqrt(first_squared + second_squared)
 
 
-# beginning communication to the arduino
-while True:
-    # the program will first recieve the coordinates to calculate
-    start_end_coord = wait_response()
-
-    # get the closest vertex near the starting coordinate
-    vertex1 = closest_vertex(start_end_coord[0][0], start_end_coord[0][1])
-    # get the closest vertex near the ending coordinate
-    vertex2 = closest_vertex(start_end_coord[1][0], start_end_coord[1][1])
-
-    # find the minimum path to get from start to end
-    destination_path_list = least_cost_path(g, vertex1, vertex2, cost_distance)
-    # find the number of waypoints the path takes
-    num_waypoints = len(destination_path_list)
-    # print number of waypoints to arduino
-    sys.stdout.write("N " + str(num_waypoints) + "\n")
-    if num_waypoints != 0:
-        arduino_continue = wait_response()
-        for i in destination_path_list:
-            arduino_continue = False
-            sys.stdou.write(
-                "W " + str(vertex_coord[i][0]) + " " + str(vertex_coord[i][1])
-                + "\n")
-            while not arduino_continue:
-                arduino_continue = wait_response()
-    else:
-        break
+if __name__ == __main__:
+    
