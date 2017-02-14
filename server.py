@@ -1,4 +1,6 @@
-from adjacencygraph import AdjacencyGraph as g
+# server.py - by Jose Ramirez and Brady Pomerleau- CMPUT 275 Section EB1
+
+from adjacencygraph import AdjacencyGraph
 import math
 import sys
 
@@ -7,9 +9,10 @@ import sys
 # Edmonton
 
 # Here we are building the digraph containing all the edges and vertices inside
-# the Edmonotn Graph
+# the Edmonton Graph
 
-# create graph g with UndirectedAdjacencyGraph class
+# create graph g with directed AdjacencyGraph class
+g = AdjacencyGraph()
 
 # open the Edmonton Grph .txt file
 Edmonton_Graph = open("edmonton-roads-2.0.1.txt")  # read entire .csv file
@@ -29,21 +32,20 @@ for i in Edmonton_Graph:
         # Store the street name into the dictionary
         edge_street_name[i[1] + ", " + i[2]] = i[3]
 
+Edmonton_Graph.close()
 
 def wait_response():
     # create a stdin stdout program to communicte and create pathways
     command = ""
-    while True:
-        if sys.stdin:
-            i = sys.stdin.readline()
-            i = i.strip().split(",")
-            command = i[0]
-            if command == 'R':
-                # read vertex coordinates and return coordinates
-                return [(int(i[1]), int(i[2])), (int(i[3]), int(i[4]))]
-            elif command == 'A':
-                # return True and continue
-                return True
+    i = sys.stdin.readline()
+    i = i.strip().split()
+    command = i[0]
+    if command == 'R':
+        # read vertex coordinates and return coordinates
+        return [(int(i[1]), int(i[2])), (int(i[3]), int(i[4]))]
+    elif command == 'A':
+        # return True and continue
+        return True
 
 
 def closest_vertex(lat1, lat2):
@@ -82,8 +84,49 @@ def least_cost_path(graph, start, dest, cost):
         vertex is always start, the last is always dest in the list.
         Any two consecutive vertices correspond to some
         edge in graph.
-        """
-    return 0
+    """
+    import heapq
+
+    reached = dict()  # (empty dictionary)
+
+    runners = []
+    # a runner is an event from one vertex to another.
+    # runners is list of tuples organized as follows:
+    #     (time + cost(origin, goal), origin, goal)
+    # origin is the vertex at which the runner started.
+    # goal is the next vertex to be visited.
+    # time is the amount of 'time' taken from start to origin. amount of
+    # time is determined by the cost function
+
+    # start the first runner at vertex 'start'
+    heapq.heappush(runners,(0, start, start))
+
+    while runners:
+        #evaluate the runner with the shortest
+        (time, origin, goal) = heapq.heappop(runners)
+
+
+        if goal in reached:
+            # if goal is in reached another runner has already made it there in
+            # less time. Ignore this runner and continue to the next
+            continue
+
+        reached[goal] = (origin, time) # runner got to dict key from dict value
+        if goal == dest:
+            path = []
+            while goal != start:
+                path.append(goal)
+                (goal, v) = reached[goal]
+            path.append(start)
+            path.reverse()
+            return path
+        for v_next in graph.neighbours(goal):
+            if v_next in reached:
+                #some other runner has made it to vertex faster, do not send
+                #runner
+                continue
+            heapq.heappush(runners, (time + cost(goal, v_next), goal, v_next))
+    return [] # if dest not reached, return empty list
 
 
 def cost_distance(u, v):
@@ -104,31 +147,32 @@ def cost_distance(u, v):
 
     return math.sqrt(first_squared + second_squared)
 
+if __name__ == '__main__':
+    # beginning communication to the arduino
+    while True:
+        # the program will first recieve the coordinates to calculate
+        start_end_coord = wait_response()
 
-# beginning communication to the arduino
-while True:
-    # the program will first recieve the coordinates to calculate
-    start_end_coord = wait_response()
+        # get the closest vertex near the starting coordinate
+        vertex1 = closest_vertex(start_end_coord[0][0], start_end_coord[0][1])
+        # get the closest vertex near the ending coordinate
+        vertex2 = closest_vertex(start_end_coord[1][0], start_end_coord[1][1])
 
-    # get the closest vertex near the starting coordinate
-    vertex1 = closest_vertex(start_end_coord[0][0], start_end_coord[0][1])
-    # get the closest vertex near the ending coordinate
-    vertex2 = closest_vertex(start_end_coord[1][0], start_end_coord[1][1])
-
-    # find the minimum path to get from start to end
-    destination_path_list = least_cost_path(g, vertex1, vertex2, cost_distance)
-    # find the number of waypoints the path takes
-    num_waypoints = len(destination_path_list)
-    # print number of waypoints to arduino
-    sys.stdout.write("N " + str(num_waypoints) + "\n")
-    if num_waypoints != 0:
-        arduino_continue = wait_response()
-        for i in destination_path_list:
-            arduino_continue = False
-            sys.stdou.write(
-                "W " + str(vertex_coord[i][0]) + " " + str(vertex_coord[i][1])
-                + "\n")
-            while not arduino_continue:
-                arduino_continue = wait_response()
-    else:
-        break
+        # find the minimum path to get from start to end
+        destination_path_list = least_cost_path(g, vertex1, vertex2, cost_distance)
+        # find the number of waypoints the path takes
+        num_waypoints = len(destination_path_list)
+        # print number of waypoints to arduino
+        sys.stdout.write("N " + str(num_waypoints) + "\n")
+        if num_waypoints > 0:
+            arduino_continue = wait_response()
+            for i in destination_path_list:
+                arduino_continue = False
+                sys.stdout.write(
+                    "W " + str(vertex_coord[i][0]) + " " + str(vertex_coord[i][1])
+                    + "\n")
+                while not arduino_continue:
+                    arduino_continue = wait_response()
+            sys.stdout.write("E" + "\n")
+        # else:
+        #     break
