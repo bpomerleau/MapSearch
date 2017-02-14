@@ -1,4 +1,4 @@
-from adjacencygraph import AdjacencyGraph
+from adjacencygraph import AdjacencyGraph as g
 import math
 import sys
 
@@ -11,10 +11,6 @@ import sys
 
 # create graph g with UndirectedAdjacencyGraph class
 
-
-g = AdjacencyGraph()
-
-
 # open the Edmonton Grph .txt file
 Edmonton_Graph = open("edmonton-roads-2.0.1.txt")  # read entire .csv file
 # read each line to determine whether to add vertices or add edges
@@ -24,12 +20,12 @@ for i in Edmonton_Graph:
     # split by commas
     i = i.strip().split(",")
     if i[0] == 'V':  # when the line is describing a vertex
-        g.add_vertex(int(i[1]))
+        g.add_vertex(int(i[1]))  # add the vertex to the graph
         # Store the latitudes and longitudes into a tuple
         vertex_coord[int(i[1])] = (int(float(i[2]) * 100000),
                                    int(float(i[3]) * 100000))
     elif i[0] == 'E':  # when the line is describing an edge
-        g.add_edge((int(i[1]), int(i[2])))
+        g.add_edge((int(i[1]), int(i[2])))  # add the edge to the graph
         # Store the street name into the dictionary
         edge_street_name[i[1] + ", " + i[2]] = i[3]
 
@@ -39,15 +35,32 @@ def wait_response():
     command = ""
     while True:
         if sys.stdin:
-            for i in sys.stdin:
-                i = i.split().strip(",")
-                command = i[0]
-                if commmand == 'R':
-                    #read coordinates and return coordinates
-                elif command == 'A':
-                    #return nothing and continue
-                elif command == 'E':
-                    #end the program
+            i = sys.stdin.readline()
+            i = i.strip().split(",")
+            command = i[0]
+            if command == 'R':
+                # read vertex coordinates and return coordinates
+                return [(int(i[1]), int(i[2])), (int(i[3]), int(i[4]))]
+            elif command == 'A':
+                # return True and continue
+                return True
+
+
+def closest_vertex(lat1, lat2):
+    ''' Finds the nearest vertex to these coordinates
+    returns: vertex value'''
+    min_cost = 1000000000000000  # Some arbitrary large number
+    close_vertex = 0
+    for i in vertex_coord:
+        vertex_tuple = vertex_coord[i]
+        first_squared = (lat1 - vertex_tuple[0]) * (lat1 - vertex_tuple[0])
+        second_squared = (lat2 - vertex_tuple[1]) * (lat2 - vertex_tuple[1])
+        test_cost = math.sqrt(first_squared + second_squared)
+        if test_cost <= min_cost:
+            min_cost = test_cost
+            close_vertex = i
+    return close_vertex
+
 
 def least_cost_path(graph, start, dest, cost):
     """Find and return a least cost path in graph from start vertex to dest vertex.
@@ -59,7 +72,7 @@ def least_cost_path(graph, start, dest, cost):
       start: The vertex where the path starts. It is assumed
         that start is a vertex of graph.
       dest:  The vertex where the path ends. It is assumed
-        that start is a vertex of graph.
+        that dest is a vertex of graph.
       cost:  A function, taking the two vertices of an edge as
         parameters and returning the cost of the edge. For its
         interface, see the definition of cost_distance.
@@ -88,4 +101,34 @@ def cost_distance(u, v):
         (coord2_tuple[0] - coord1_tuple[0])
     second_squared = (coord2_tuple[1] - coord1_tuple[1]) * \
         (coord2_tuple[1] - coord1_tuple[1])
+
     return math.sqrt(first_squared + second_squared)
+
+
+# beginning communication to the arduino
+while True:
+    # the program will first recieve the coordinates to calculate
+    start_end_coord = wait_response()
+
+    # get the closest vertex near the starting coordinate
+    vertex1 = closest_vertex(start_end_coord[0][0], start_end_coord[0][1])
+    # get the closest vertex near the ending coordinate
+    vertex2 = closest_vertex(start_end_coord[1][0], start_end_coord[1][1])
+
+    # find the minimum path to get from start to end
+    destination_path_list = least_cost_path(g, vertex1, vertex2, cost_distance)
+    # find the number of waypoints the path takes
+    num_waypoints = len(destination_path_list)
+    # print number of waypoints to arduino
+    sys.stdout.write("N " + str(num_waypoints) + "\n")
+    if num_waypoints != 0:
+        arduino_continue = wait_response()
+        for i in destination_path_list:
+            arduino_continue = False
+            sys.stdou.write(
+                "W " + str(vertex_coord[i][0]) + " " + str(vertex_coord[i][1])
+                + "\n")
+            while not arduino_continue:
+                arduino_continue = wait_response()
+    else:
+        break
